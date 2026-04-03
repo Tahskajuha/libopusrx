@@ -1,5 +1,5 @@
-#ifndef _OPUSRX_H
-#define _OPUSRX_H
+#ifndef _RTP_H
+#define _RTP_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,5 +20,7 @@ typedef struct {
   const uint8_t *payload;
   size_t payload_len;
 } rtp_packet_t;
+
+int rtp_parse(const uint8_t *buffer, size_t len, rtp_packet_t *out);
 
 #endif

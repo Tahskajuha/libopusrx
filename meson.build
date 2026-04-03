@@ -12,7 +12,8 @@ project(
 )
 
 srcs = files(
-  'src/opusrx.c'
+  'src/rtp.c',
+  'src/jb.c'
 )
 
 deps = [dependency('opus', version: '>=1.5')]
@@ -24,4 +25,4 @@ libopusrx = library(
   install: true
 )
 
-install_headers('src/opusrx.h')
+install_headers('src/rtp.h', 'src/jb.h')
