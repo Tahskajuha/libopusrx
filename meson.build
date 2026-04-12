@@ -1,9 +1,10 @@
 project(
   'opusrx',
   'c',
+  'java',
   version: '0.1',
   license: 'GPL3',
-  meson_version: '>=0.56.0',
+  meson_version: '>=0.62.0',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -11,18 +12,6 @@ project(
   ]
 )
 
-srcs = files(
-  'src/rtp.c',
-  'src/jb.c'
-)
-
-deps = [dependency('opus', version: '>=1.5')]
-
-libopusrx = library(
-  'opusrx',
-  srcs,
-  dependencies: deps,
-  install: true
-)
-
-install_headers('src/rtp.h', 'src/jb.h')
+subdir('src')
+subdir('native_demo')
+subdir('jni')

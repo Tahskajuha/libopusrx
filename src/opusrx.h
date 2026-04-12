@@ -1,9 +1,12 @@
-#ifndef _RTP_H
-#define _RTP_H
+#ifndef _OPUSRX_H
+#define _OPUSRX_H
 
+#include <opus.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+typedef struct player player_t;
 
 typedef struct {
   uint8_t version;
@@ -21,6 +24,8 @@ typedef struct {
   size_t payload_len;
 } rtp_packet_t;
 
-int rtp_parse(const uint8_t *buffer, size_t len, rtp_packet_t *out);
+int ingest_rtp(const uint8_t *buffer, size_t len, player_t *p);
+int player_step(player_t *p, float *pcm);
+int rtp_parse(const uint8_t *buf, size_t len, rtp_packet_t *out);
 
 #endif

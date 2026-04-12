@@ -1,1 +1,9 @@
 .cache
+builds/
+android_demo/.gradle/
+android_demo/local.properties
+*.idea/
+*.swp
+*~
+.DS_Store
+android_demo/app/src/main/jniLibs/

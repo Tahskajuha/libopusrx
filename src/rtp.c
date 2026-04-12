@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "rtp.h"
+#include "opusrx.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
