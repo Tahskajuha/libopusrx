@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "opusrx"
-include(":app")
+include(":app", ":receiver", ":web")

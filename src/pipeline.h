@@ -1,7 +1,7 @@
 #ifndef _JB_C
 #define _JB_C
 
-#include "opusrx.h"
+#include "opusrx/opusrx.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

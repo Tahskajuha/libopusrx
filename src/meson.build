@@ -24,4 +24,4 @@ opusrx_dep = declare_dependency(
   dependencies: deps
 )
 
-install_headers('opusrx.h', subdir: 'opusrx')
+install_headers('opusrx/opusrx.h', subdir: 'opusrx')

@@ -6,4 +6,5 @@ android_demo/local.properties
 *.swp
 *~
 .DS_Store
-android_demo/app/src/main/jniLibs/
+android_demo/receiver/src/main/jniLibs/
+compile_commands.json

@@ -1,9 +1,13 @@
 MSON := builds/meson_compiled
-JNI_LIBS := android_demo/app/src/main/jniLibs/arm64-v8a
+JNI_LIBS := android_demo/receiver/src/main/jniLibs/arm64-v8a
 
 .PHONY: native android all clean
 
 all: native android
+
+native-setup:
+	meson setup --wipe $(MSON)
+	ln -sfn $(MSON)/compile_commands.json compile_commands.json
 
 native:
 	meson setup --wipe $(MSON)
@@ -20,3 +24,4 @@ android:
 
 clean:
 	rm -rf builds
+	rm compile_commands.json

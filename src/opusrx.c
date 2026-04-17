@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "opusrx.h"
+#include "opusrx/opusrx.h"
 #include "pipeline.h"
 #include "player.h"
 #include <opus.h>
