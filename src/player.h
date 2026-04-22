@@ -2,6 +2,7 @@
 #define _PLAYER_H
 
 #include <opus.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef struct player {
@@ -10,6 +11,7 @@ typedef struct player {
   OpusDecoder *dec;
   uint32_t current;
   uint16_t exp_seq;
+  bool initialized;
   int frame_size;
 } player_t;
 

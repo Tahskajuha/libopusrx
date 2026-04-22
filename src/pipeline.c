@@ -1,7 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "pipeline.h"
-#include "player.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -25,7 +24,6 @@ struct jitter_buffer *init_buffer(size_t capacity) {
     return NULL;
   }
   jb->capacity = capacity;
-  jb->header = 0;
   return jb;
 }
 
@@ -66,29 +64,18 @@ void queue_push(struct queue *q, rtp_packet_t packet) {
   }
 }
 
-bool buffer_pop(struct jitter_buffer *jb, rtp_packet_t *out) {
+bool buffer_get(struct jitter_buffer *jb, rtp_packet_t *out, uint16_t seq,
+                bool consume) {
   if (!jb || !out)
     return false;
-  size_t idx = jb->header;
-  jb->header = (jb->header + 1) % jb->capacity;
+  size_t idx = seq % jb->capacity;
   bool is_valid = jb->valid[idx];
 
-  if (is_valid) {
+  if (is_valid && jb->packets[idx].sequence_number == seq) {
     *out = jb->packets[idx];
-    jb->valid[idx] = false;
-  }
-  return is_valid;
-}
-
-bool buffer_peek(struct jitter_buffer *jb, rtp_packet_t *out) {
-  if (!jb || !out) {
-    return false;
-  }
-  size_t idx = jb->header;
-  bool is_valid = jb->valid[idx];
-
-  if (is_valid) {
-    *out = jb->packets[idx];
+    jb->valid[idx] = consume ? false : jb->valid[idx];
+  } else {
+    is_valid = false;
   }
   return is_valid;
 }
@@ -117,24 +104,4 @@ void destroy_queue(struct queue *q) {
     return;
   free(q->packets);
   free(q);
-}
-
-int process_input_queue(player_t *p) {
-  if (!p)
-    return -1;
-  rtp_packet_t pkt;
-  uint32_t window = p->jb->capacity * p->frame_size;
-
-  int32_t lower = -(int32_t)((window * 4) / 10);
-  int32_t upper = (int32_t)((window * 6) / 10);
-
-  int processed = 0;
-  while (queue_pop(p->q, &pkt)) {
-    int32_t diff = (int32_t)((uint32_t)(pkt.timestamp - p->current));
-    if (diff > lower && diff <= upper) {
-      buffer_push(p->jb, pkt);
-      processed++;
-    }
-  }
-  return processed;
 }
