@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "opusrx/opusrx.h"
+#include "opusrx/primitives.h"
 #include "pipeline.h"
 #include "player.h"
 #include <opus.h>
@@ -9,6 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 player_t *init_player(const player_config_t cfg) {
   int err = 0;
@@ -33,7 +35,13 @@ player_t *init_player(const player_config_t cfg) {
     free(p);
     return NULL;
   }
+  p->channels = cfg.channels;
+  p->sample_rate = cfg.sample_rate;
+  p->window = (cfg.buffer_size - 1) * cfg.frame_size;
   p->frame_size = cfg.frame_size;
+  p->target_depth = cfg.target_depth;
+  p->err_threshold = cfg.err_threshold;
+  p->timeout = cfg.timeout;
   return p;
 }
 
@@ -43,54 +51,40 @@ int ingest_rtp(const uint8_t *buffer, size_t len, player_t *p) {
   rtp_packet_t pkt;
   if (rtp_parse(buffer, len, &pkt) != 0)
     return 0;
+  pkt.payload = payload_copy(pkt.payload, pkt.payload_len);
+  if (((int32_t)(pkt.timestamp - p->latest_packet_ts)) > 0)
+    p->latest_packet_ts = pkt.timestamp;
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
+    p->last_packet_arrival_time = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
   queue_push(p->q, pkt);
   return 1;
 }
 
-int process_input(player_t *p) {
-  if (!p)
-    return -1;
-  rtp_packet_t pkt;
-  // int32_t window = (p->jb->capacity - 1) * p->frame_size;
-
-  int processed = 0;
-  while (queue_pop(p->q, &pkt)) {
-    if (!p->initialized) {
-      p->current = pkt.timestamp;
-      p->exp_seq = pkt.sequence_number;
-      p->initialized = true;
-      buffer_push(p->jb, pkt);
-      processed++;
-      continue;
-    }
-    // int32_t diff = (int32_t)((uint32_t)(pkt.timestamp - p->current));
-    // if (diff > 0 && diff <= window) {
-    buffer_push(p->jb, pkt);
-    processed++;
-    // }
-  }
-  return processed;
-}
-
-int player_step(player_t *p, int16_t *pcm) {
+int render_frame(player_t *p, int16_t *pcm) {
   if (!p || !pcm)
     return -1;
-  rtp_packet_t pkt;
-  int samples;
-  if (buffer_get(p->jb, &pkt, p->exp_seq, true)) {
-    samples = opus_decode(p->dec, pkt.payload, pkt.payload_len, pcm,
-                          p->frame_size, 0);
-  } else if (buffer_get(p->jb, &pkt, p->exp_seq + 1, false)) {
-    samples = opus_decode(p->dec, pkt.payload, pkt.payload_len, pcm,
-                          p->frame_size, 1);
-    printf("FEC");
-  } else {
-    samples = opus_decode(p->dec, NULL, 0, pcm, p->frame_size, 0);
-    printf("PLC");
+  process_input(p);
+  if (p->warmup_frames > 0) {
+    p->warmup_frames--;
+    return idle(p, pcm);
   }
-  p->exp_seq = (p->exp_seq + 1) & 0xFFFF;
-  p->current += p->frame_size;
-  return samples;
+  player_stats_t s = get_player_stats(p);
+  s = get_player_stats(p);
+  int error = s.buffer_depth - p->target_depth;
+  if (error > p->err_threshold) {
+    skip_frames(p, error - 1);
+    printf("skipping %d frames\n", error);
+  } else if (error < -p->err_threshold) {
+    if (s.gap > p->timeout) {
+      printf("Silencio!\n");
+      return idle(p, pcm);
+    } else {
+      printf("PLC outside playerstep\n");
+      return plc(p, pcm);
+    }
+  }
+  return player_step(p, pcm);
 }
 
 void player_destroy(player_t *p) {

@@ -1,15 +1,18 @@
 #ifndef _JB_C
 #define _JB_C
 
-#include "opusrx/opusrx.h"
+#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+typedef struct rtp_packet rtp_packet_t;
 
 struct jitter_buffer {
   rtp_packet_t *packets;
   bool *valid;
   size_t capacity;
+  int size;
 };
 
 struct queue {
@@ -17,6 +20,7 @@ struct queue {
   size_t capacity;
   size_t front;
   size_t size;
+  pthread_mutex_t lock;
 };
 
 struct jitter_buffer *init_buffer(size_t capacity);

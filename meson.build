@@ -4,7 +4,7 @@ project(
   'java',
   version: '0.1',
   license: 'GPL3',
-  meson_version: '>=0.62.0',
+  meson_version: '>=1.1.0',
   default_options: [
     'c_std=c11',
     'warning_level=2',

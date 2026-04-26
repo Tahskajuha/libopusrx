@@ -1,7 +1,8 @@
 srcs = files(
   'rtp.c',
   'pipeline.c',
-  'opusrx.c'
+  'opusrx.c',
+  'primitives.c'
 )
 
 inc = include_directories('.')
@@ -24,4 +25,4 @@ opusrx_dep = declare_dependency(
   dependencies: deps
 )
 
-install_headers('opusrx/opusrx.h', subdir: 'opusrx')
+install_headers(['opusrx/opusrx.h', 'opusrx/primitives.h'], subdir: 'opusrx')

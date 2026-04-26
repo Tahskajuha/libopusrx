@@ -4,18 +4,18 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <opusrx/opusrx.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-int main() {
+void *network_thread(void *arg) {
   int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (sock < 0) {
     perror("socket");
-    return -1;
+    return NULL;
   }
-
   struct sockaddr_in addr = {0};
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
@@ -23,39 +23,68 @@ int main() {
   if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     perror("bind");
     close(sock);
-    return -1;
+    return NULL;
   }
 
-  snd_pcm_t *handle;
-  snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
-  snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
-                     SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1, 20000);
-
-  player_t *player = init_player((player_config_t){.frame_size = 960,
-                                                   .buffer_size = 20,
-                                                   .queue_size = 40,
-                                                   .channels = 2,
-                                                   .sample_rate = 48000});
-
+  player_t *p = arg;
   uint8_t buffer[1500];
-  int16_t pcm[960 * 2];
-  rtp_packet_t pkt;
-  ssize_t len;
 
-  while ((len = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL)) > 0) {
-    if (rtp_parse(buffer, len, &pkt) != 0) {
-      perror("RTP parse");
+  printf("Network thread started\n");
+
+  while (1) {
+    ssize_t len = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL);
+    if (len < 0) {
+      perror("recvfrom");
       continue;
     }
-    ingest_rtp(buffer, len, player);
-    process_input(player);
-    int samples = player_step(player, pcm);
-    if (samples > 0) {
-      int err = snd_pcm_writei(handle, pcm, samples);
-      if (err < 0) {
-        err = snd_pcm_recover(handle, err, 0);
-      }
+    ingest_rtp(buffer, len, p);
+  }
+  return NULL;
+}
+
+void *playback_thread(void *arg) {
+  snd_pcm_t *handle;
+  if (snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+    perror("snd_pcm_open");
+    return NULL;
+  }
+  if (snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
+                         SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1,
+                         20000) < 0) {
+    perror("snd_pcm_set_params");
+    return NULL;
+  }
+
+  player_t *p = arg;
+  int16_t pcm[960 * 2];
+
+  printf("Playback thread started\n");
+
+  while (1) {
+    int samples = render_frame(p, pcm);
+    int err = snd_pcm_writei(handle, pcm, samples);
+    if (err < 0) {
+      err = snd_pcm_recover(handle, err, 0);
     }
   }
+  return NULL;
+}
+
+int main() {
+  setvbuf(stdout, NULL, _IONBF, 0);
+  pthread_t net_thread, play_thread;
+  player_t *player = init_player((player_config_t){.frame_size = 960,
+                                                   .buffer_size = 15,
+                                                   .queue_size = 30,
+                                                   .channels = 2,
+                                                   .sample_rate = 48000,
+                                                   .target_depth = 8,
+                                                   .err_threshold = 5,
+                                                   .timeout = 200});
+  pthread_create(&net_thread, NULL, network_thread, player);
+  pthread_create(&play_thread, NULL, playback_thread, player);
+
+  pthread_join(net_thread, NULL);
+  pthread_join(play_thread, NULL);
   return 0;
 }

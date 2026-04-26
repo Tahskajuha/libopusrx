@@ -1,9 +1,11 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "opusrx/opusrx.h"
+#include "opusrx/primitives.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 int rtp_parse(const uint8_t *buffer, size_t len, rtp_packet_t *out) {
   if (!buffer || !out || len < 12)
@@ -68,4 +70,14 @@ int rtp_parse(const uint8_t *buffer, size_t len, rtp_packet_t *out) {
   out->payload_len = len - (header_len + ext_len + pad_len);
 
   return 0;
+}
+
+const uint8_t *payload_copy(const uint8_t *payload, size_t payload_len) {
+  if (!payload || payload_len == 0)
+    return NULL;
+  uint8_t *pl = malloc(payload_len);
+  if (!pl)
+    return NULL;
+  memcpy(pl, payload, payload_len);
+  return pl;
 }
