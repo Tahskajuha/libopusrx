@@ -55,8 +55,12 @@ int ingest_rtp(const uint8_t *buffer, size_t len, player_t *p) {
   if (((int32_t)(pkt.timestamp - p->latest_packet_ts)) > 0)
     p->latest_packet_ts = pkt.timestamp;
   struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-    p->last_packet_arrival_time = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    uint64_t now = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
+    if ((now - p->last_packet_arrival_time) >= p->timeout)
+      p->initialized = false;
+    p->last_packet_arrival_time = now;
+  }
   queue_push(p->q, pkt);
   return 1;
 }
@@ -73,12 +77,18 @@ int render_frame(player_t *p, int16_t *pcm) {
   s = get_player_stats(p);
   int error = s.buffer_depth - p->target_depth;
   if (error > p->err_threshold) {
-    skip_frames(p, error - 1);
-    printf("skipping %d frames\n", error);
+    if (s.playout_lag > p->window) {
+      p->initialized = false;
+    } else {
+      skip_frames(p, error - 1);
+      printf("skipping %d frames\n", error);
+    }
   } else if (error < -p->err_threshold) {
     if (s.gap > p->timeout) {
       printf("Silencio!\n");
       return idle(p, pcm);
+    } else if (s.playout_lag < 0) {
+      p->initialized = false;
     } else {
       printf("PLC outside playerstep\n");
       return plc(p, pcm);

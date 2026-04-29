@@ -17,18 +17,23 @@ int process_input(player_t *p) {
 
   int processed = 0;
   player_stats_t s = get_player_stats(p);
-  while (queue_pop(p->q, &pkt)) {
-    if (!p->initialized || s.playout_lag > p->window || s.playout_lag < 0 ||
-        s.gap > p->timeout) {
-      p->current = pkt.timestamp;
-      p->exp_seq = pkt.sequence_number;
-      p->initialized = true;
-      buffer_push(p->jb, pkt);
-      printf("Pushed: %d\n", pkt.sequence_number);
-      processed++;
-      p->warmup_frames = 10;
-      continue;
+  if ((!p->initialized) &&
+      queue_pop(p->q, &pkt)) {
+    if (!p->initialized) {
+      printf("Resync due to uninitialization\n");
+    } else if (s.playout_lag > p->window) {
+      printf("Resync due to playout lag greater than window\n");
+    } else {
+      printf("Resync due to playout lag less than window");
     }
+    p->current = pkt.timestamp;
+    p->exp_seq = pkt.sequence_number;
+    p->initialized = true;
+    buffer_push(p->jb, pkt);
+    processed++;
+    p->warmup_frames = p->target_depth;
+  }
+  while (queue_pop(p->q, &pkt)) {
     int32_t diff = (int32_t)(pkt.timestamp - p->current);
     if (diff >= 0 && diff <= p->window) {
       buffer_push(p->jb, pkt);

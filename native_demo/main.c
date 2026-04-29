@@ -28,6 +28,7 @@ void *network_thread(void *arg) {
 
   player_t *p = arg;
   uint8_t buffer[1500];
+  static uint64_t last = 0;
 
   printf("Network thread started\n");
 
@@ -37,6 +38,12 @@ void *network_thread(void *arg) {
       perror("recvfrom");
       continue;
     }
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t now = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
+    if (last != 0)
+      printf("[NET] delta=%lu ms\n", now - last);
+    last = now;
     ingest_rtp(buffer, len, p);
   }
   return NULL;
@@ -61,6 +68,7 @@ void *playback_thread(void *arg) {
   printf("Playback thread started\n");
 
   while (1) {
+    snd_pcm_wait(handle, 50);
     int samples = render_frame(p, pcm);
     int err = snd_pcm_writei(handle, pcm, samples);
     if (err < 0) {
@@ -74,13 +82,13 @@ int main() {
   setvbuf(stdout, NULL, _IONBF, 0);
   pthread_t net_thread, play_thread;
   player_t *player = init_player((player_config_t){.frame_size = 960,
-                                                   .buffer_size = 15,
-                                                   .queue_size = 30,
+                                                   .buffer_size = 12,
+                                                   .queue_size = 128,
                                                    .channels = 2,
                                                    .sample_rate = 48000,
-                                                   .target_depth = 8,
-                                                   .err_threshold = 5,
-                                                   .timeout = 200});
+                                                   .target_depth = 6,
+                                                   .err_threshold = 3,
+                                                   .timeout = 120});
   pthread_create(&net_thread, NULL, network_thread, player);
   pthread_create(&play_thread, NULL, playback_thread, player);
 
