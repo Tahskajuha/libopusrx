@@ -8,7 +8,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -42,6 +41,7 @@ player_t *init_player(const player_config_t cfg) {
   p->target_depth = cfg.target_depth;
   p->err_threshold = cfg.err_threshold;
   p->timeout = cfg.timeout;
+  p->max_warmup_frames = cfg.warmup_frames;
   return p;
 }
 
@@ -77,20 +77,17 @@ int render_frame(player_t *p, int16_t *pcm) {
   s = get_player_stats(p);
   int error = s.buffer_depth - p->target_depth;
   if (error > p->err_threshold) {
-    if (s.playout_lag > p->window) {
+    if (p->warmup_frames == 0 && s.playout_lag > p->window) {
       p->initialized = false;
     } else {
       skip_frames(p, error - 1);
-      printf("skipping %d frames\n", error);
     }
   } else if (error < -p->err_threshold) {
     if (s.gap > p->timeout) {
-      printf("Silencio!\n");
       return idle(p, pcm);
-    } else if (s.playout_lag < 0) {
+    } else if (p->warmup_frames == 0 && s.playout_lag < 0) {
       p->initialized = false;
     } else {
-      printf("PLC outside playerstep\n");
       return plc(p, pcm);
     }
   }

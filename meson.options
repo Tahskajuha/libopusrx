@@ -1,1 +1,2 @@
 option('install_demo', type: 'boolean', value: false, description: 'Install the native demo')
+option('install_jni', type: 'boolean', value: false, description: 'Install the JNI library')

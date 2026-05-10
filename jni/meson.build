@@ -9,5 +9,5 @@ shared_library(
     opusrx_dep,
     jni_dep
   ],
-  install: true
+  install: get_option('install_jni')
 )

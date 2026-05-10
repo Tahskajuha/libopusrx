@@ -1,0 +1,13 @@
+[Unit]
+Description=Opus RTP Receiver
+After=sound.target
+
+[Service]
+User=@USER@
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
+ExecStart=/usr/local/bin/opusrx /etc/opusrx/opusrx.conf
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

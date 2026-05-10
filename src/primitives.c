@@ -5,7 +5,6 @@
 #include "player.h"
 #include <opus.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -16,31 +15,19 @@ int process_input(player_t *p) {
   rtp_packet_t pkt;
 
   int processed = 0;
-  player_stats_t s = get_player_stats(p);
-  if ((!p->initialized) &&
-      queue_pop(p->q, &pkt)) {
-    if (!p->initialized) {
-      printf("Resync due to uninitialization\n");
-    } else if (s.playout_lag > p->window) {
-      printf("Resync due to playout lag greater than window\n");
-    } else {
-      printf("Resync due to playout lag less than window");
-    }
+  if ((!p->initialized) && queue_pop(p->q, &pkt)) {
     p->current = pkt.timestamp;
     p->exp_seq = pkt.sequence_number;
     p->initialized = true;
     buffer_push(p->jb, pkt);
     processed++;
-    p->warmup_frames = p->target_depth;
+    p->warmup_frames = p->max_warmup_frames;
   }
   while (queue_pop(p->q, &pkt)) {
     int32_t diff = (int32_t)(pkt.timestamp - p->current);
     if (diff >= 0 && diff <= p->window) {
       buffer_push(p->jb, pkt);
-      printf("Pushed: %d\n", pkt.sequence_number);
       processed++;
-    } else {
-      printf("Packet dropped\n");
     }
   }
   p->buffer_depth = p->jb->size;
@@ -75,18 +62,14 @@ int player_step(player_t *p, int16_t *pcm) {
     samples = opus_decode(p->dec, pkt.payload, pkt.payload_len, pcm,
                           p->frame_size, 0);
     free((void *)pkt.payload);
-    printf("Found packet\n");
   } else if (buffer_get(p->jb, &pkt, p->exp_seq + 1, false)) {
     samples = opus_decode(p->dec, pkt.payload, pkt.payload_len, pcm,
                           p->frame_size, 1);
-    printf("FEC\n");
   } else {
     samples = plc(p, pcm);
-    printf("PLC inside playerstep\n");
   }
   p->exp_seq = (p->exp_seq + 1) & 0xFFFF;
   p->current += p->frame_size;
-  printf("Next expected sequence: %d\n", p->exp_seq);
   return samples;
 }
 

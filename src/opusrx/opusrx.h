@@ -18,6 +18,7 @@ typedef struct {
   int target_depth;
   uint32_t timeout;
   int err_threshold;
+  int warmup_frames;
 } player_config_t;
 
 player_t *init_player(const player_config_t cfg);

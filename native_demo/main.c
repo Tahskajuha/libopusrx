@@ -1,96 +1,126 @@
 #define _POSIX_C_SOURCE 200809L
+#define MAX_BUFFER_SIZE 1500
+#define MAX_PCM_OUT_SIZE 11520
+#define CFG_INT(group, key) g_key_file_get_integer(kf, group, key, NULL)
+#define CFG_STR(group, key) g_key_file_get_string(kf, group, key, NULL)
 
 #include <alsa/asoundlib.h>
 #include <arpa/inet.h>
+#include <glib.h>
 #include <netinet/in.h>
 #include <opusrx/opusrx.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <sys/socket.h>
-#include <unistd.h>
+
+typedef struct {
+  player_t *player;
+  snd_pcm_t *handle;
+} playback_arg_t;
+
+typedef struct {
+  player_t *player;
+  int sock;
+} network_arg_t;
 
 void *network_thread(void *arg) {
-  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-  if (sock < 0) {
-    perror("socket");
-    return NULL;
-  }
-  struct sockaddr_in addr = {0};
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(5004);
-  if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-    perror("bind");
-    close(sock);
-    return NULL;
-  }
+  network_arg_t *data = arg;
+  int s = data->sock;
+  player_t *p = data->player;
 
-  player_t *p = arg;
-  uint8_t buffer[1500];
-  static uint64_t last = 0;
-
-  printf("Network thread started\n");
+  uint8_t buffer[MAX_BUFFER_SIZE];
 
   while (1) {
-    ssize_t len = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL);
+    ssize_t len = recvfrom(s, buffer, sizeof(buffer), 0, NULL, NULL);
     if (len < 0) {
       perror("recvfrom");
       continue;
     }
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t now = ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL;
-    if (last != 0)
-      printf("[NET] delta=%lu ms\n", now - last);
-    last = now;
     ingest_rtp(buffer, len, p);
   }
   return NULL;
 }
 
 void *playback_thread(void *arg) {
-  snd_pcm_t *handle;
-  if (snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
-    perror("snd_pcm_open");
-    return NULL;
-  }
-  if (snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE,
-                         SND_PCM_ACCESS_RW_INTERLEAVED, 2, 48000, 1,
-                         20000) < 0) {
-    perror("snd_pcm_set_params");
-    return NULL;
-  }
+  playback_arg_t *data = arg;
+  player_t *p = data->player;
+  snd_pcm_t *h = data->handle;
 
-  player_t *p = arg;
-  int16_t pcm[960 * 2];
-
-  printf("Playback thread started\n");
+  int16_t pcm[MAX_PCM_OUT_SIZE];
 
   while (1) {
-    snd_pcm_wait(handle, 50);
+    snd_pcm_wait(h, 50);
     int samples = render_frame(p, pcm);
-    int err = snd_pcm_writei(handle, pcm, samples);
+    int err = snd_pcm_writei(h, pcm, samples);
     if (err < 0) {
-      err = snd_pcm_recover(handle, err, 0);
+      err = snd_pcm_recover(h, err, 0);
+      if (err < 0) {
+        exit(1);
+      }
     }
   }
   return NULL;
 }
 
-int main() {
+int create_sock(int port) {
+  int s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (s < 0) {
+    g_error("socket");
+  }
+  struct sockaddr_in addr = {0};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+  addr.sin_port = htons(port);
+  if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    close(s);
+    g_error("bind");
+  }
+  return s;
+}
+
+int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   pthread_t net_thread, play_thread;
-  player_t *player = init_player((player_config_t){.frame_size = 960,
-                                                   .buffer_size = 12,
-                                                   .queue_size = 128,
-                                                   .channels = 2,
-                                                   .sample_rate = 48000,
-                                                   .target_depth = 6,
-                                                   .err_threshold = 3,
-                                                   .timeout = 120});
-  pthread_create(&net_thread, NULL, network_thread, player);
-  pthread_create(&play_thread, NULL, playback_thread, player);
+
+  GKeyFile *kf = g_key_file_new();
+  GError *error = NULL;
+  if (argc < 2 ||
+      !g_key_file_load_from_file(kf, argv[1], G_KEY_FILE_NONE, &error)) {
+    g_error("Failed to load config: %s",
+            error ? error->message
+                  : "Unknown error; make sure config file exists");
+  }
+
+  int s = create_sock(CFG_INT("network", "port"));
+  player_t *p = init_player((player_config_t){
+      .frame_size = CFG_INT("player", "frame_size"),
+      .buffer_size = CFG_INT("player", "buffer_size"),
+      .queue_size = CFG_INT("player", "queue_size"),
+      .channels = CFG_INT("player", "channels"),
+      .sample_rate = CFG_INT("player", "sample_rate"),
+      .target_depth = CFG_INT("player", "target_depth"),
+      .err_threshold = CFG_INT("player", "err_threshold"),
+      .timeout = CFG_INT("player", "timeout"),
+      .warmup_frames = CFG_INT("player", "warmup_frames"),
+  });
+  snd_pcm_t *h;
+  if (snd_pcm_open(&h, CFG_STR("alsa", "device"), SND_PCM_STREAM_PLAYBACK, 0) <
+      0) {
+    g_error("snd_pcm_open");
+  }
+  if (snd_pcm_set_params(
+          h, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
+          CFG_INT("player", "channels"), CFG_INT("player", "sample_rate"),
+          CFG_INT("alsa", "soft_resample"),
+          CFG_INT("alsa", "latency_us")) < 0) {
+    g_error("snd_pcm_set_params");
+  }
+
+  network_arg_t network_arg = {.player = p, .sock = s};
+  playback_arg_t playback_arg = {.player = p, .handle = h};
+
+  pthread_create(&net_thread, NULL, network_thread, &network_arg);
+  pthread_create(&play_thread, NULL, playback_thread, &playback_arg);
 
   pthread_join(net_thread, NULL);
   pthread_join(play_thread, NULL);

@@ -28,6 +28,7 @@ typedef struct player {
   int err_threshold;
 
   int warmup_frames;
+  int max_warmup_frames;
 } player_t;
 
 #endif
