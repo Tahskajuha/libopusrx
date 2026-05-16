@@ -38,13 +38,14 @@ install-native-demo:
 	@echo "   sudo systemctl enable --now opusrxd"
 
 gradle:
-	@if [ -f "$(MSON)/jni/libopusrx-jni.so" ]; then \
-		cp $(MSON)/jni/libopusrx-jni.so $(JNI_LIBS)/; \
-		cd android_demo && ./gradlew assembleDebug; \
-		cd ..; \
-	else \
-		echo "Build the jni library first!"; \
-	fi
+	@if [ ! -f "$(MSON)/jni/libopusrx-jni.so" ]; then \
+		echo "JNI library not found. Building now!"; \
+		meson setup --wipe -Dinstall_jni=true $(MSON); \
+		ninja -C $(MSON); \
+	fi; \
+	cp $(MSON)/jni/libopusrx-jni.so $(JNI_LIBS)/; \
+	cd android_demo && ./gradlew assembleDebug; \
+	cd ..;
 
 clean:
 	rm -rf builds
